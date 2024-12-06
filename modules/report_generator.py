@@ -1,94 +1,79 @@
-import pandas as pd
-from io import BytesIO
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet
-import openpyxl
+from sqlalchemy.orm import Session
+from database import Teilnehmer, Test, Prognose, SessionLocal
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from datetime import datetime
+
 
 class ReportGenerator:
-    """
-    Diese Klasse erstellt PDF- und Excel-Berichte für Teilnehmer.
-    """
+    def __init__(self):
+        self.db = SessionLocal()
 
-    def generate_pdf(self, participant, tests, predictions):
+    def generate_participant_report(self, teilnehmer_id):
         """
         Erstellt einen PDF-Bericht für einen Teilnehmer.
-
-        Args:
-            participant (dict): Teilnehmerdaten.
-            tests (pd.DataFrame): Testergebnisse des Teilnehmers.
-            predictions (pd.DataFrame): Prognosedaten des Teilnehmers.
-
-        Returns:
-            BytesIO: Der PDF-Bericht als Bytes-Objekt.
         """
-        buffer = BytesIO()
-        pdf = SimpleDocTemplate(buffer, pagesize=A4)
-        styles = getSampleStyleSheet()
-        elements = []
+        teilnehmer = self.db.query(Teilnehmer).filter_by(teilnehmer_id=teilnehmer_id).first()
+        if not teilnehmer:
+            raise ValueError("Teilnehmer nicht gefunden.")
 
-        # Titel und Teilnehmerdaten
-        elements.append(Paragraph(f"<b>Teilnehmerbericht: {participant['name']}</b>", styles["Title"]))
-        elements.append(Spacer(1, 12))
-        elements.append(Paragraph(f"<b>SV-Nummer:</b> {participant['sv_nummer']}", styles["Normal"]))
-        elements.append(Paragraph(f"<b>Status:</b> {participant['status']}", styles["Normal"]))
-        elements.append(Spacer(1, 12))
+        tests = self.db.query(Test).filter_by(teilnehmer_id=teilnehmer_id).all()
+        prognosen = self.db.query(Prognose).filter_by(teilnehmer_id=teilnehmer_id).all()
 
-        # Testergebnisse
-        if not tests.empty:
-            elements.append(Paragraph("<b>Testergebnisse:</b>", styles["Heading2"]))
-            table_data = [["Datum", "Gesamtprozent"] + list(tests.columns[3:9])]
-            for _, row in tests.iterrows():
-                table_data.append([row["test_datum"], f"{row['gesamt_prozent']:.2f}%"] + row[3:9].tolist())
+        report_filename = f"Teilnehmerbericht_{teilnehmer.name}_{datetime.now().strftime('%Y%m%d')}.pdf"
+        pdf = canvas.Canvas(report_filename, pagesize=letter)
 
-            table = Table(table_data)
-            table.setStyle(TableStyle([
-                ("BACKGROUND", (0, 0), (-1, 0), colors.grey),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
-                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
-            ]))
-            elements.append(table)
-            elements.append(Spacer(1, 12))
+        # Header
+        pdf.setFont("Helvetica-Bold", 16)
+        pdf.drawString(50, 750, f"Teilnehmerbericht: {teilnehmer.name}")
+        pdf.setFont("Helvetica", 12)
+        pdf.drawString(50, 730, f"SV-Nummer: {teilnehmer.sv_nummer}")
+        pdf.drawString(50, 710, f"Geburtsdatum: {teilnehmer.geburtsdatum.strftime('%d.%m.%Y')}")
+        pdf.drawString(50, 690, f"Status: {teilnehmer.status}")
 
-        # Prognose
-        if not predictions.empty:
-            elements.append(Paragraph("<b>Prognose:</b>", styles["Heading2"]))
-            for _, row in predictions.iterrows():
-                elements.append(Paragraph(f"Tag {row['Tag']}: {row['Prognose']:.2f}%", styles["Normal"]))
+        # Tests
+        pdf.setFont("Helvetica-Bold", 14)
+        pdf.drawString(50, 650, "Testergebnisse:")
+        pdf.setFont("Helvetica", 12)
+        y_position = 630
+        if tests:
+            for test in tests:
+                pdf.drawString(50, y_position, f"Test am {test.test_datum.strftime('%d.%m.%Y')}:")
+                pdf.drawString(70, y_position - 15, f"- Brüche: {test.brueche_erreichte_punkte}/{test.brueche_max_punkte}")
+                pdf.drawString(70, y_position - 30, f"- Textaufgaben: {test.textaufgaben_erreichte_punkte}/{test.textaufgaben_max_punkte}")
+                pdf.drawString(70, y_position - 45, f"- Raumvorstellung: {test.raumvorstellung_erreichte_punkte}/{test.raumvorstellung_max_punkte}")
+                pdf.drawString(70, y_position - 60, f"- Gleichungen: {test.gleichungen_erreichte_punkte}/{test.gleichungen_max_punkte}")
+                pdf.drawString(70, y_position - 75, f"- Grundrechenarten: {test.grundrechenarten_erreichte_punkte}/{test.grundrechenarten_max_punkte}")
+                pdf.drawString(70, y_position - 90, f"- Zahlenraum: {test.zahlenraum_erreichte_punkte}/{test.zahlenraum_max_punkte}")
+                y_position -= 120
+                if y_position < 100:
+                    pdf.showPage()
+                    y_position = 750
+        else:
+            pdf.drawString(50, y_position, "Keine Testergebnisse verfügbar.")
 
-        # PDF speichern
-        pdf.build(elements)
-        buffer.seek(0)
-        return buffer
+        # Prognosen
+        pdf.setFont("Helvetica-Bold", 14)
+        pdf.drawString(50, y_position - 20, "Prognosen:")
+        pdf.setFont("Helvetica", 12)
+        y_position -= 40
+        if prognosen:
+            for prognose in prognosen:
+                pdf.drawString(50, y_position, f"Prognose für den {prognose.prognose_datum.strftime('%d.%m.%Y')}:")
+                pdf.drawString(70, y_position - 15, f"- Brüche: {prognose.brueche_prognose:.2f}")
+                pdf.drawString(70, y_position - 30, f"- Textaufgaben: {prognose.textaufgaben_prognose:.2f}")
+                pdf.drawString(70, y_position - 45, f"- Raumvorstellung: {prognose.raumvorstellung_prognose:.2f}")
+                pdf.drawString(70, y_position - 60, f"- Gleichungen: {prognose.gleichungen_prognose:.2f}")
+                pdf.drawString(70, y_position - 75, f"- Grundrechenarten: {prognose.grundrechenarten_prognose:.2f}")
+                pdf.drawString(70, y_position - 90, f"- Zahlenraum: {prognose.zahlenraum_prognose:.2f}")
+                pdf.drawString(70, y_position - 105, f"- Gesamtprognose: {prognose.gesamt_prognose:.2f}")
+                y_position -= 130
+                if y_position < 100:
+                    pdf.showPage()
+                    y_position = 750
+        else:
+            pdf.drawString(50, y_position, "Keine Prognosen verfügbar.")
 
-    def generate_excel(self, participant, tests, predictions):
-        """
-        Erstellt einen Excel-Bericht für einen Teilnehmer.
-
-        Args:
-            participant (dict): Teilnehmerdaten.
-            tests (pd.DataFrame): Testergebnisse des Teilnehmers.
-            predictions (pd.DataFrame): Prognosedaten des Teilnehmers.
-
-        Returns:
-            BytesIO: Der Excel-Bericht als Bytes-Objekt.
-        """
-        buffer = BytesIO()
-        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-            # Teilnehmerdaten
-            participant_df = pd.DataFrame([participant])
-            participant_df.to_excel(writer, sheet_name="Teilnehmer", index=False)
-
-            # Testergebnisse
-            if not tests.empty:
-                tests.to_excel(writer, sheet_name="Testergebnisse", index=False)
-
-            # Prognosen
-            if not predictions.empty:
-                predictions.to_excel(writer, sheet_name="Prognosen", index=False)
-
-        buffer.seek(0)
-        return buffer
-      
+        # Abschluss
+        pdf.save()
+        return report_filename
