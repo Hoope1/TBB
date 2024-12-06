@@ -1,96 +1,98 @@
 import streamlit as st
-import pandas as pd
 from modules.data_manager import DataManager
 from modules.test_manager import TestManager
 from modules.ai_predictor import AIPredictor
 from modules.report_generator import ReportGenerator
+from database import init_db
+import plotly.graph_objs as go
 
-# Datenbank-Manager initialisieren
+# Initialisiere die Datenbank
+init_db()
+
+# Module initialisieren
 data_manager = DataManager()
 test_manager = TestManager()
 ai_predictor = AIPredictor()
 report_generator = ReportGenerator()
 
-# Seitenleiste
-st.sidebar.title("Navigation")
-page = st.sidebar.radio("Seite auswählen", ["Teilnehmer", "Tests", "Prognosen", "Berichte"])
+# Seiten-Layout
+st.set_page_config(page_title="Mathematik Kursverwaltung", layout="wide")
 
-# Teilnehmerverwaltung
-if page == "Teilnehmer":
-    st.header("Teilnehmerverwaltung")
-    show_inactive = st.checkbox("Inaktive Teilnehmer anzeigen")
-    participants = data_manager.get_participants(show_inactive)
-    participants_df = pd.DataFrame([{
-        "ID": p.teilnehmer_id,
-        "Name": p.name,
-        "Status": p.status
-    } for p in participants])
-    st.write(participants_df)
+# Header
+st.title("Mathematik Kursverwaltung")
+st.write("Verwalte Teilnehmer, Tests und Prognosen mit interaktiven Visualisierungen und Berichten.")
 
-    with st.form("add_participant_form"):
-        st.subheader("Neuen Teilnehmer hinzufügen")
-        name = st.text_input("Name")
-        sv_nummer = st.text_input("Sozialversicherungsnummer")
-        geburtsdatum = st.date_input("Geburtsdatum")
-        geschlecht = st.selectbox("Geschlecht", ["Männlich", "Weiblich", "Divers"])
-        eintrittsdatum = st.date_input("Eintrittsdatum")
-        if st.form_submit_button("Hinzufügen"):
-            data_manager.add_participant(name, sv_nummer, geburtsdatum, geschlecht, eintrittsdatum)
-            st.success("Teilnehmer erfolgreich hinzugefügt!")
+# Optionen
+show_inactive = st.sidebar.checkbox("Inaktive Teilnehmer anzeigen", value=False)
+selected_action = st.sidebar.selectbox(
+    "Aktion auswählen", 
+    ["Teilnehmer hinzufügen", "Teilnehmer bearbeiten", "Testergebnisse eingeben", "Test korrigieren", "KI-Lernen starten", "Bericht generieren"]
+)
 
-# Testverwaltung
-elif page == "Tests":
-    st.header("Testverwaltung")
-    teilnehmer_id = st.number_input("Teilnehmer-ID", min_value=1, step=1)
-    tests = test_manager.get_tests_for_participant(teilnehmer_id)
-    tests_df = pd.DataFrame([{
-        "Datum": t.test_datum,
-        "Gesamtpunkte": t.gesamt_erreichte_punkte,
-        "Prozent": t.gesamt_prozent
-    } for t in tests])
-    st.write(tests_df)
+# Teilnehmer-Tabelle
+st.subheader("Teilnehmerübersicht")
+participants = data_manager.get_participants(show_inactive)
 
-    with st.form("add_test_form"):
-        st.subheader("Neuen Test hinzufügen")
-        test_datum = st.date_input("Testdatum")
-        results = {
-            "brueche_erreichte_punkte": st.number_input("Brüche (erreichte Punkte)", min_value=0, step=1),
-            "brueche_max_punkte": st.number_input("Brüche (max Punkte)", min_value=0, step=1),
-            "textaufgaben_erreichte_punkte": st.number_input("Textaufgaben (erreichte Punkte)", min_value=0, step=1),
-            "textaufgaben_max_punkte": st.number_input("Textaufgaben (max Punkte)", min_value=0, step=1),
-            "raumvorstellung_erreichte_punkte": st.number_input("Raumvorstellung (erreichte Punkte)", min_value=0, step=1),
-            "raumvorstellung_max_punkte": st.number_input("Raumvorstellung (max Punkte)", min_value=0, step=1),
-            "gleichungen_erreichte_punkte": st.number_input("Gleichungen (erreichte Punkte)", min_value=0, step=1),
-            "gleichungen_max_punkte": st.number_input("Gleichungen (max Punkte)", min_value=0, step=1),
-            "grundrechenarten_erreichte_punkte": st.number_input("Grundrechenarten (erreichte Punkte)", min_value=0, step=1),
-            "grundrechenarten_max_punkte": st.number_input("Grundrechenarten (max Punkte)", min_value=0, step=1),
-            "zahlenraum_erreichte_punkte": st.number_input("Zahlenraum (erreichte Punkte)", min_value=0, step=1),
-            "zahlenraum_max_punkte": st.number_input("Zahlenraum (max Punkte)", min_value=0, step=1)
-        }
-        if st.form_submit_button("Hinzufügen"):
-            test_manager.add_test(teilnehmer_id, test_datum, results)
-            st.success("Test erfolgreich hinzugefügt!")
+if participants:
+    selected_participant = st.selectbox(
+        "Teilnehmer auswählen", 
+        options=[f"{p.name} ({p.status})" for p in participants]
+    )
+    selected_participant_id = participants[[f"{p.name} ({p.status})" for p in participants].index(selected_participant)].teilnehmer_id
 
-# Prognoseverwaltung
-elif page == "Prognosen":
-    st.header("Prognoseverwaltung")
-    teilnehmer_id = st.number_input("Teilnehmer-ID", min_value=1, step=1)
-    predictions = ai_predictor.get_predictions_for_participant(teilnehmer_id)
-    predictions_df = pd.DataFrame([{
-        "Tag": p.tag,
-        "Prognose Gesamt": p.gesamt_prognose
-    } for p in predictions])
-    st.write(predictions_df)
+    # Aktion basierend auf Auswahl
+    if selected_action == "Teilnehmer hinzufügen":
+        with st.form("add_participant"):
+            name = st.text_input("Name")
+            sv_nummer = st.text_input("Sozialversicherungsnummer")
+            gender = st.selectbox("Geschlecht", ["Männlich", "Weiblich", "Divers"])
+            entry_date = st.date_input("Eintrittsdatum")
+            submit = st.form_submit_button("Hinzufügen")
+            if submit:
+                data_manager.add_participant(name, sv_nummer, gender, entry_date)
+                st.success("Teilnehmer erfolgreich hinzugefügt.")
+    
+    elif selected_action == "Teilnehmer bearbeiten":
+        participant = data_manager.get_participant_by_id(selected_participant_id)
+        with st.form("edit_participant"):
+            name = st.text_input("Name", value=participant.name)
+            exit_date = st.date_input("Austrittsdatum", value=participant.austrittsdatum)
+            submit = st.form_submit_button("Änderungen speichern")
+            if submit:
+                data_manager.update_participant(selected_participant_id, name, exit_date)
+                st.success("Änderungen erfolgreich gespeichert.")
 
-# Berichtsgenerierung
-elif page == "Berichte":
-    st.header("Berichtsgenerierung")
-    teilnehmer_id = st.number_input("Teilnehmer-ID", min_value=1, step=1)
-    report = report_generator.generate_report(teilnehmer_id)
-    if report:
-        st.subheader("Bericht")
-        st.write("Name:", report["Name"])
-        st.write("Tests:", report["Tests"])
-        st.write("Prognosen:", report["Prognosen"])
-    else:
-        st.warning("Kein Bericht für diesen Teilnehmer gefunden!")
+    elif selected_action == "Testergebnisse eingeben":
+        with st.form("add_test"):
+            test_date = st.date_input("Testdatum")
+            scores = {cat: st.number_input(f"Punkte für {cat}", min_value=0) for cat in ["Brüche", "Textaufgaben", "Raumvorstellung", "Gleichungen", "Grundrechenarten", "Zahlenraum"]}
+            submit = st.form_submit_button("Test speichern")
+            if submit:
+                test_manager.add_test(selected_participant_id, test_date, scores)
+                st.success("Test erfolgreich gespeichert.")
+    
+    elif selected_action == "Test korrigieren":
+        test = test_manager.get_latest_test(selected_participant_id)
+        with st.form("edit_test"):
+            for cat, score in test.items():
+                test[cat] = st.number_input(f"Punkte für {cat}", value=score)
+            submit = st.form_submit_button("Änderungen speichern")
+            if submit:
+                test_manager.update_test(test)
+                st.success("Testdaten erfolgreich aktualisiert.")
+    
+    elif selected_action == "KI-Lernen starten":
+        ai_predictor.train()
+        st.success("KI erfolgreich trainiert.")
+    
+    elif selected_action == "Bericht generieren":
+        report_path = report_generator.generate_report(selected_participant_id)
+        st.success(f"Bericht erstellt: [Download]({report_path})")
+
+# Diagramm
+st.subheader("Leistungsübersicht")
+performance_data = data_manager.get_performance_data(selected_participant_id)
+fig = go.Figure()
+for category, values in performance_data.items():
+    fig.add_trace(go.Scatter(x=values["dates"], y=values["scores"], mode='lines', name=category))
+st.plotly_chart(fig)
