@@ -1,20 +1,31 @@
-# Python
-*.pyc
+# Python-Standard
 __pycache__/
+*.py[cod]
 *.pyo
 *.pyd
 
-# Streamlit Secrets
+# Virtuelle Umgebungen
+.venv/
+env/
+
+# Streamlit-Secrets
 .streamlit/secrets.toml
 
-# Cache und Logs
-.cache/
-*.log
+# Datenbanken
+data/database.db
 
-# Virtuelle Umgebungen
-env/
-venv/
+# Log-Dateien
+logs/*.log
 
-# Betriebssystemspezifisch
+# Modelle
+models/*.pkl
+
+# Berichte
+reports/pdfs/
+
+# Jupyter-Notebook-Checkpoints
+.ipynb_checkpoints/
+
+# Systemdateien
 .DS_Store
 Thumbs.db
