@@ -1,79 +1,116 @@
-from datetime import datetime, timedelta
-from sqlalchemy.orm import Session
-from database import Teilnehmer, Test, Prognose, SessionLocal
-import pandas as pd
 from flaml import AutoML
+from sqlalchemy.orm import Session
+from database import Test, Prognose, SessionLocal
+from datetime import datetime, timedelta
+import pandas as pd
+
 
 class AIPredictor:
     def __init__(self):
-        self.db = SessionLocal()
+        """Initialisiert eine neue Datenbank-Sitzung."""
+        self.db: Session = SessionLocal()
+        self.model = AutoML()
 
-    def generate_forecasts(self, teilnehmer_id, tage_in_zukunft):
+    def train_model(self):
         """
-        Generiert Prognosen für einen Teilnehmer basierend auf seinen bisherigen Tests.
+        Trainiert das Modell basierend auf den vorhandenen Testergebnissen.
         """
-        tests = self.db.query(Test).filter_by(teilnehmer_id=teilnehmer_id).all()
+        # Daten aus der Datenbank abrufen
+        tests = self.db.query(Test).all()
+
         if not tests:
-            raise ValueError("Keine Tests für diesen Teilnehmer gefunden.")
+            print("Keine Tests vorhanden. Training nicht möglich.")
+            return
 
         # Daten vorbereiten
         data = []
         for test in tests:
             data.append({
-                "datum": test.test_datum,
-                "brueche": test.brueche_erreichte_punkte,
-                "textaufgaben": test.textaufgaben_erreichte_punkte,
-                "raumvorstellung": test.raumvorstellung_erreichte_punkte,
-                "gleichungen": test.gleichungen_erreichte_punkte,
-                "grundrechenarten": test.grundrechenarten_erreichte_punkte,
-                "zahlenraum": test.zahlenraum_erreichte_punkte
+                "tag": (test.test_datum - test.teilnehmer.eintrittsdatum).days,
+                "brueche_erreichte_punkte": test.brueche_erreichte_punkte,
+                "textaufgaben_erreichte_punkte": test.textaufgaben_erreichte_punkte,
+                "raumvorstellung_erreichte_punkte": test.raumvorstellung_erreichte_punkte,
+                "gleichungen_erreichte_punkte": test.gleichungen_erreichte_punkte,
+                "grundrechenarten_erreichte_punkte": test.grundrechenarten_erreichte_punkte,
+                "zahlenraum_erreichte_punkte": test.zahlenraum_erreichte_punkte,
+                "gesamt_prozent": test.gesamt_prozent
             })
 
         df = pd.DataFrame(data)
-        df["datum"] = pd.to_datetime(df["datum"])
-        df = df.sort_values("datum").reset_index(drop=True)
+        X = df.drop(columns=["gesamt_prozent"])
+        y = df["gesamt_prozent"]
 
-        forecasts = []
-        for column in ["brueche", "textaufgaben", "raumvorstellung", "gleichungen", "grundrechenarten", "zahlenraum"]:
-            if len(df) < 2:
-                raise ValueError(f"Nicht genügend Daten für Prognosen für {column}.")
-            
-            # Prognosemodell trainieren
-            automl = AutoML()
-            train_data = df[["datum", column]].dropna()
-            train_data["tage"] = (train_data["datum"] - train_data["datum"].min()).dt.days
-            X_train = train_data[["tage"]]
-            y_train = train_data[column]
-            automl.fit(X_train, y_train, task="regression", time_budget=5)
+        # Modell trainieren
+        self.model.fit(X_train=X, y_train=y, task="regression")
+        print("Modelltraining abgeschlossen.")
 
-            # Prognose generieren
-            max_tage = train_data["tage"].max()
-            future_tage = [max_tage + i for i in range(1, tage_in_zukunft + 1)]
-            y_pred = automl.predict(pd.DataFrame(future_tage, columns=["tage"]))
+    def predict_progress(self, participant_id: int, days_ahead: int = 30):
+        """
+        Gibt Prognosen für einen Teilnehmer basierend auf einem zukünftigen Datum zurück.
 
-            forecasts.append((column, y_pred))
+        Args:
+            participant_id (int): Die ID des Teilnehmers.
+            days_ahead (int): Anzahl der Tage in der Zukunft für die Prognose.
 
-        # Prognosen in der Datenbank speichern
-        for i, tag in enumerate(range(1, tage_in_zukunft + 1)):
-            prognose_datum = datetime.now().date() + timedelta(days=tag)
-            new_prognose = Prognose(
-                teilnehmer_id=teilnehmer_id,
-                prognose_datum=prognose_datum,
-                tag=tag,
-                brueche_prognose=forecasts[0][1][i],
-                textaufgaben_prognose=forecasts[1][1][i],
-                raumvorstellung_prognose=forecasts[2][1][i],
-                gleichungen_prognose=forecasts[3][1][i],
-                grundrechenarten_prognose=forecasts[4][1][i],
-                zahlenraum_prognose=forecasts[5][1][i],
-                gesamt_prognose=sum([f[1][i] for f in forecasts])
-            )
-            self.db.add(new_prognose)
+        Returns:
+            dict: Prognosen für jede Kategorie und gesamt.
+        """
+        # Teilnehmerdaten abrufen
+        participant = self.db.query(Test).filter(Test.teilnehmer_id == participant_id).all()
+        if not participant:
+            print(f"Keine Tests für Teilnehmer-ID {participant_id} gefunden.")
+            return {}
 
+        last_test = max(participant, key=lambda t: t.test_datum)
+        future_date = last_test.test_datum + timedelta(days=days_ahead)
+        features = {
+            "tag": (future_date - last_test.teilnehmer.eintrittsdatum).days,
+            "brueche_erreichte_punkte": last_test.brueche_erreichte_punkte,
+            "textaufgaben_erreichte_punkte": last_test.textaufgaben_erreichte_punkte,
+            "raumvorstellung_erreichte_punkte": last_test.raumvorstellung_erreichte_punkte,
+            "gleichungen_erreichte_punkte": last_test.gleichungen_erreichte_punkte,
+            "grundrechenarten_erreichte_punkte": last_test.grundrechenarten_erreichte_punkte,
+            "zahlenraum_erreichte_punkte": last_test.zahlenraum_erreichte_punkte
+        }
+
+        # Prognose berechnen
+        df_features = pd.DataFrame([features])
+        prediction = self.model.predict(df_features)
+
+        # Prognose speichern
+        new_prognose = Prognose(
+            teilnehmer_id=participant_id,
+            prognose_datum=future_date,
+            tag=features["tag"],
+            brueche_prognose=features["brueche_erreichte_punkte"],
+            textaufgaben_prognose=features["textaufgaben_erreichte_punkte"],
+            raumvorstellung_prognose=features["raumvorstellung_erreichte_punkte"],
+            gleichungen_prognose=features["gleichungen_erreichte_punkte"],
+            grundrechenarten_prognose=features["grundrechenarten_erreichte_punkte"],
+            zahlenraum_prognose=features["zahlenraum_erreichte_punkte"],
+            gesamt_prognose=prediction[0]
+        )
+        self.db.add(new_prognose)
         self.db.commit()
 
-    def get_forecasts_for_participant(self, teilnehmer_id):
+        return {
+            "gesamt_prognose": prediction[0],
+            "details": features
+        }
+
+    def evaluate_model(self):
         """
-        Gibt alle Prognosen eines Teilnehmers zurück.
+        Bewertet das Modell basierend auf den Trainingsdaten.
         """
-        return self.db.query(Prognose).filter_by(teilnehmer_id=teilnehmer_id).all()
+        if not self.model.best_config:
+            print("Modell ist noch nicht trainiert.")
+            return
+
+        print(f"Bestes Modell: {self.model.best_config}")
+        print(f"Beste Punktzahl: {self.model.best_loss}")
+
+
+if __name__ == "__main__":
+    ai_predictor = AIPredictor()
+    ai_predictor.train_model()
+    print(ai_predictor.predict_progress(participant_id=1, days_ahead=30))
