@@ -1,4 +1,12 @@
 import streamlit as st
+import sys
+import os
+
+# Sicherstellen, dass das src-Verzeichnis im Python-Pfad ist
+current_dir = os.path.dirname(os.path.abspath(__file__))
+src_dir = os.path.join(current_dir, "../")
+sys.path.insert(0, src_dir)
+
 from src.database.database_setup import initialize_database
 from src.database.models import Participant, Test
 from src.logic.calculations import calculate_percentage, update_participant_status
@@ -78,4 +86,3 @@ elif menu == "Berichte":
 
     # Beispielhafter Bericht-Generierungsbereich
     st.write("Hier könnten PDF-Berichte generiert werden.")
-  
