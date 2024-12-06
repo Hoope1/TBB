@@ -1,85 +1,50 @@
 from sqlalchemy.orm import Session
-from database import Test, Teilnehmer, SessionLocal
+from database import Test, SessionLocal
 from datetime import datetime
 
 class TestManager:
-    """
-    Diese Klasse verwaltet die Tests der Teilnehmer.
-    """
-
     def __init__(self):
-        self.db: Session = SessionLocal()
+        self.db = SessionLocal()
 
-    def add_test(self, teilnehmer_id, test_datum, erreichte_punkte, max_punkte):
+    def add_test(self, teilnehmer_id, test_datum, brueche_erreichte_punkte, brueche_max_punkte,
+                 textaufgaben_erreichte_punkte, textaufgaben_max_punkte, raumvorstellung_erreichte_punkte,
+                 raumvorstellung_max_punkte, gleichungen_erreichte_punkte, gleichungen_max_punkte,
+                 grundrechenarten_erreichte_punkte, grundrechenarten_max_punkte, zahlenraum_erreichte_punkte,
+                 zahlenraum_max_punkte):
         """
-        Fügt einen Test hinzu und berechnet die Prozentwerte.
-
-        Args:
-            teilnehmer_id (int): Die ID des Teilnehmers.
-            test_datum (str): Das Datum des Tests (YYYY-MM-DD).
-            erreichte_punkte (dict): Erreichte Punkte in den Kategorien.
-            max_punkte (dict): Maximale Punkte in den Kategorien.
+        Fügt einen neuen Test für einen Teilnehmer hinzu und berechnet die Gesamtpunktzahl und den Prozentsatz.
         """
-        # Berechnung der Gesamtpunkte
-        gesamt_erreichte_punkte = sum(erreichte_punkte.values())
-        gesamt_max_punkte = sum(max_punkte.values())
-
-        # Berechnung der Gesamtprozentwerte
-        gesamt_prozent = (gesamt_erreichte_punkte / gesamt_max_punkte) * 100
-
-        # Erstellung des neuen Tests
         new_test = Test(
             teilnehmer_id=teilnehmer_id,
-            test_datum=datetime.strptime(test_datum, "%Y-%m-%d").date(),
-            brueche_erreichte_punkte=erreichte_punkte["Brüche"],
-            brueche_max_punkte=max_punkte["Brüche"],
-            textaufgaben_erreichte_punkte=erreichte_punkte["Textaufgaben"],
-            textaufgaben_max_punkte=max_punkte["Textaufgaben"],
-            raumvorstellung_erreichte_punkte=erreichte_punkte["Raumvorstellung"],
-            raumvorstellung_max_punkte=max_punkte["Raumvorstellung"],
-            gleichungen_erreichte_punkte=erreichte_punkte["Gleichungen"],
-            gleichungen_max_punkte=max_punkte["Gleichungen"],
-            grundrechenarten_erreichte_punkte=erreichte_punkte["Grundrechenarten"],
-            grundrechenarten_max_punkte=max_punkte["Grundrechenarten"],
-            zahlenraum_erreichte_punkte=erreichte_punkte["Zahlenraum"],
-            zahlenraum_max_punkte=max_punkte["Zahlenraum"],
-            gesamt_erreichte_punkte=gesamt_erreichte_punkte,
-            gesamt_max_punkte=gesamt_max_punkte,
-            gesamt_prozent=gesamt_prozent,
+            test_datum=test_datum,
+            brueche_erreichte_punkte=brueche_erreichte_punkte,
+            brueche_max_punkte=brueche_max_punkte,
+            textaufgaben_erreichte_punkte=textaufgaben_erreichte_punkte,
+            textaufgaben_max_punkte=textaufgaben_max_punkte,
+            raumvorstellung_erreichte_punkte=raumvorstellung_erreichte_punkte,
+            raumvorstellung_max_punkte=raumvorstellung_max_punkte,
+            gleichungen_erreichte_punkte=gleichungen_erreichte_punkte,
+            gleichungen_max_punkte=gleichungen_max_punkte,
+            grundrechenarten_erreichte_punkte=grundrechenarten_erreichte_punkte,
+            grundrechenarten_max_punkte=grundrechenarten_max_punkte,
+            zahlenraum_erreichte_punkte=zahlenraum_erreichte_punkte,
+            zahlenraum_max_punkte=zahlenraum_max_punkte
         )
+        new_test.berechne_prozentwerte()
         self.db.add(new_test)
         self.db.commit()
 
-    def get_tests_by_participant(self, teilnehmer_id):
+    def get_tests_for_participant(self, teilnehmer_id):
         """
-        Ruft alle Tests eines Teilnehmers ab.
-
-        Args:
-            teilnehmer_id (int): Die ID des Teilnehmers.
-
-        Returns:
-            list: Liste der Tests eines Teilnehmers.
+        Gibt alle Tests eines Teilnehmers zurück.
         """
         return self.db.query(Test).filter_by(teilnehmer_id=teilnehmer_id).all()
 
-    def get_test_summary(self, teilnehmer_id):
+    def delete_test(self, test_id):
         """
-        Erstellt eine Zusammenfassung der Tests eines Teilnehmers.
-
-        Args:
-            teilnehmer_id (int): Die ID des Teilnehmers.
-
-        Returns:
-            dict: Zusammenfassung mit Durchschnittswerten.
+        Löscht einen Test anhand seiner ID.
         """
-        tests = self.get_tests_by_participant(teilnehmer_id)
-        if not tests:
-            return None
-
-        summary = {
-            "Anzahl Tests": len(tests),
-            "Durchschnitt Gesamtprozent": sum(test.gesamt_prozent for test in tests) / len(tests),
-            "Letzter Test": max(test.test_datum for test in tests).strftime("%Y-%m-%d"),
-        }
-        return summary
-      
+        test = self.db.query(Test).filter_by(test_id=test_id).first()
+        if test:
+            self.db.delete(test)
+            self.db.commit()
