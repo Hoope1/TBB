@@ -1,0 +1,20 @@
+# Python
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+
+# Streamlit Secrets
+.streamlit/secrets.toml
+
+# Cache und Logs
+.cache/
+*.log
+
+# Virtuelle Umgebungen
+env/
+venv/
+
+# Betriebssystemspezifisch
+.DS_Store
+Thumbs.db
