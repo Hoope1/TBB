@@ -3,8 +3,8 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
 
+# Basis-Klasse für ORM-Modelle
 Base = declarative_base()
-
 
 # Tabelle: Teilnehmer
 class Teilnehmer(Base):
@@ -20,6 +20,7 @@ class Teilnehmer(Base):
     alter = Column(Integer, nullable=False)
     status = Column(String, nullable=False)
 
+    # Beziehungen zu anderen Tabellen
     tests = relationship("Test", back_populates="teilnehmer")
     prognosen = relationship("Prognose", back_populates="teilnehmer")
 
@@ -98,4 +99,9 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 def init_db():
     """Initialisiert die Datenbank und erstellt alle Tabellen."""
     Base.metadata.create_all(bind=engine)
-  
+
+
+# Beispiel, um die Datenbank zu initialisieren
+if __name__ == "__main__":
+    init_db()
+    print("Datenbank wurde erfolgreich initialisiert.")
